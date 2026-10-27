@@ -373,14 +373,14 @@ jobs:
           echo "ANYKERNEL_DIR=$(pwd)"     >> $GITHUB_ENV
 
       # ── 13. Upload artifact ───────────────────────────────────────────────────
-      # archive: false uploads the flashable zip as-is — no wrapper, no double
-      # compression, exact bytes. download-artifact names the extracted folder
-      # after the artifact, so the name is deliberately not "*.zip" to keep the
-      # folder from looking like a package zip.
+      # archive: false -> no nested zip, and no double compression: the upload is
+      # exactly the flashable zip (v7 runs @actions/artifact 5.x, which does NOT
+      # pre-compress, unlike v6). The name ends in "-pkg": download-artifact (7.x,
+      # @actions/artifact 6.x) extracts any artifact whose name ends in .zip.
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.ZIP_BASE }}
+          name: ${{ env.ZIP_BASE }}-pkg
           path: ${{ env.ANYKERNEL_DIR }}/${{ env.ZIP_NAME }}.zip
           archive: false
           retention-days: 30
