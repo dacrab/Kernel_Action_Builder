@@ -202,7 +202,7 @@ jobs:
         id: cache-anykernel
         with:
           path: AnyKernel
-          key: anykernel-${{ env.ANYKERNEL_BRANCH }}-${{ hashFiles('.github/workflows/build-kernel.yml') }}
+          key: anykernel-${{ env.ANYKERNEL_BRANCH }}
           restore-keys: |
             anykernel-
 
