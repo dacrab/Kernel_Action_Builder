@@ -198,70 +198,76 @@ jobs:
       # ── 7. KernelSU variant ───────────────────────────────────────────────────
       # One step instead of five: each variant only differs in the setup script,
       # the branch it reports, and how it handles the SUSFS flag.
-      - name: Setup KernelSU — ${{ github.event.inputs.ksu_variant }}
-        if: github.event.inputs.enable_ksu == 'true'
-        working-directory: kernel
+      #
+      # The setup itself runs as its own step below. Keeping it separate means a
+      # failing `curl | bash` (a non-zero exit from the upstream script) is
+      # reported on its own, instead of aborting the variant bookkeeping too.
+      - name: Resolve KernelSU variant
         run: |
           set -euo pipefail
           VARIANT="${{ github.event.inputs.ksu_variant }}"
           WITH_SUSFS="${{ github.event.inputs.enable_susfs }}"
-          set_env() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"; }
 
           case "$VARIANT" in
             KernelSU-Next)
               REPO="https://github.com/KernelSU-Next/KernelSU-Next"
               if [ "$WITH_SUSFS" = "true" ]; then
                 # EvilAnsh's pinned ksun.sh carries the SUSFS patches.
-                setup() { curl -LSs "https://gist.githubusercontent.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh" | bash -s legacy; }
-                set_env KSU_BRANCH legacy-susfs-v2
+                URL="https://gist.githubusercontent.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh"
+                BRANCH="legacy-susfs-v2"
               else
-                setup() { curl -LSs "$REPO/next/kernel/setup.sh" | bash -s legacy; }
-                set_env KSU_BRANCH legacy
+                URL="$REPO/next/kernel/setup.sh"
+                BRANCH="legacy"
               fi
+              ARG="$BRANCH"
               ;;
             RKSU)
               REPO="https://github.com/rsuntk/KernelSU"
-              if [ "$WITH_SUSFS" = "true" ]; then
-                BRANCH="susfs-rksu-master"
-              else
-                BRANCH="main"
-              fi
-              setup() { curl -LSs "$REPO/main/kernel/setup.sh" | bash -s "$BRANCH"; }
-              set_env KSU_BRANCH "$BRANCH"
+              URL="$REPO/main/kernel/setup.sh"
+              if [ "$WITH_SUSFS" = "true" ]; then BRANCH="susfs-rksu-master"; else BRANCH="main"; fi
+              ARG="$BRANCH"
               ;;
             SukiSU)
               REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
+              URL="$REPO/main/kernel/setup.sh"
               if [ "$WITH_SUSFS" = "true" ]; then BRANCH="main"; else BRANCH="builtin"; fi
-              setup() { curl -LSs "$REPO/main/kernel/setup.sh" | bash -s "$BRANCH"; }
-              set_env KSU_BRANCH "$BRANCH"
+              ARG="$BRANCH"
               ;;
             xxKSU)
               REPO="https://github.com/backslashxx/KernelSU"
-              setup() { curl -LSs "$REPO/master/kernel/setup.sh" | bash -s master; }
-              set_env KSU_BRANCH master
-              if [ "$WITH_SUSFS" = "true" ]; then
-                echo "::warning::xxKSU does not support SUSFS — flag ignored."
-              fi
+              URL="$REPO/master/kernel/setup.sh"
+              BRANCH="master"
+              ARG="master"
               ;;
             BakaSU)
               REPO="https://github.com/Baka-SU/BakaSU"
-              setup() { curl -LSs "$REPO/main/kernel/setup.sh" | bash -s sync-susfs; }
-              set_env KSU_BRANCH main
+              URL="$REPO/main/kernel/setup.sh"
+              BRANCH="main"
+              ARG="sync-susfs"
               ;;
             *)
               echo "::error::unknown ksu_variant '$VARIANT'"; exit 1 ;;
           esac
 
-          setup
-
-          set_env KSU_VARIANT "$VARIANT"
-          set_env KSU_REPO "$REPO"
-          # xxKSU never supports SUSFS; everything else follows the input.
+          # xxKSU never supports SUSFS; every other variant follows the input.
           if [ "$VARIANT" = "xxKSU" ]; then
-            set_env SUSFS_ENABLED false
-          else
-            set_env SUSFS_ENABLED "$WITH_SUSFS"
+            [ "$WITH_SUSFS" = "true" ] && echo "::warning::xxKSU does not support SUSFS — flag ignored."
+            WITH_SUSFS=false
           fi
+
+          {
+            echo "KSU_VARIANT=$VARIANT"
+            echo "KSU_REPO=$REPO"
+            echo "KSU_BRANCH=$BRANCH"
+            echo "SUSFS_ENABLED=$WITH_SUSFS"
+            echo "KSU_SETUP_URL=$URL"
+            echo "KSU_SETUP_ARG=$ARG"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup KernelSU — ${{ github.event.inputs.ksu_variant }}
+        if: github.event.inputs.enable_ksu == 'true'
+        working-directory: kernel
+        run: curl -LSs "$KSU_SETUP_URL" | bash -s "$KSU_SETUP_ARG"
 
       # ── 8. SUSFS driver mode / stock fallback ─────────────────────────────────
       - name: Configure Build Variant

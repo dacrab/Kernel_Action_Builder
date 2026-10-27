@@ -33,6 +33,8 @@ jobs:
 
       # GitHub serves artifacts as a wrapper zip, so the real AnyKernel3 package
       # is one level down. Unwrap it here so the release asset is flashable.
+      # `download-artifact` unpacks the wrapper itself, so a direct package may
+      # already be present; nested zips are expanded and duplicates dropped.
       - name: Download built kernel
         if: inputs.build_run_id != ''
         uses: actions/download-artifact@v7
@@ -45,14 +47,23 @@ jobs:
         if: inputs.build_run_id != ''
         run: |
           mkdir -p assets
-          find dl -name '*.zip' -print0 | while IFS= read -r -d '' f; do
-            if unzip -l "$f" | grep -q 'META-INF/com/google/android/update-binary'; then
-              cp "$f" assets/                       # already a flashable package
-            else
-              unzip -j -o "$f" '*.zip' -d assets/   # wrapper -> inner package
-            fi
+          # Each package arrives in its own artifact folder. Flatten every zip in
+          # there; a nested wrapper zip is expanded in place by the same loop.
+          find dl -mindepth 1 -maxdepth 1 -type d -print0 | while IFS= read -r -d '' dir; do
+            while find "$dir" -name '*.zip' | grep -q .; do
+              find "$dir" -name '*.zip' -print0 | while IFS= read -r -d '' f; do
+                unzip -j -o "$f" '*.zip' -d "$(dirname "$f")" >/dev/null 2>&1 \
+                  && rm -f "$f" \
+                  || { cp "$f" "assets/$(basename "$dir").zip"; rm -f "$f"; }
+              done
+            done
+          done
+          # Nothing nested anywhere: also accept a bare package at the root.
+          find dl -maxdepth 1 -name '*.zip' -print0 | while IFS= read -r -d '' f; do
+            cp "$f" "assets/$(basename "$f")"
           done
           ls -l assets/
+          test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
