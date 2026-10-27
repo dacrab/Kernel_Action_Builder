@@ -137,28 +137,19 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      # ── 2. Cache apt packages ─────────────────────────────────────────────────
-      - name: Cache apt packages
-        uses: actions/cache@v6
-        id: cache-apt
-        with:
-          # Only .deb files: the lock/partial dirs are root-only and made tar fail.
-          path: /var/cache/apt/archives/*.deb
-          key: apt-salaa-${{ runner.os }}-${{ hashFiles('.github/workflows/build-kernel.yml') }}
-          restore-keys: |
-            apt-salaa-${{ runner.os }}-
-
+      # ── 2. Build dependencies ─────────────────────────────────────────────────
+      # ubuntu-24.04 already ships gcc, g++, make, bison, flex, libssl-dev, zip,
+      # unzip, curl, wget, time and clang — only the genuine gaps are installed.
+      # (clang/lld from the toolchain below still take precedence via PATH.)
       - name: Set up Build Environment
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential bc bison flex libssl-dev \
-            gcc clang lld libncurses5-dev git zip unzip \
-            curl wget time ccache libelf-dev libfdt-dev \
-            python3 python3-pip
+            bc ccache libelf-dev libfdt-dev python3
 
       # ── 3. ccache ──────────────────────────────────────────────────────────────
       - name: Cache ccache
+        id: cache-ccache
         uses: actions/cache@v6
         with:
           path: ~/.ccache
@@ -197,18 +188,10 @@ jobs:
           git clone --depth=1 "$CLANG_REPO" clang
 
       # ── 6. AnyKernel3 ──────────────────────────────────────────────────────────
-      - name: Cache AnyKernel3
-        uses: actions/cache@v6
-        id: cache-anykernel
-        with:
-          path: AnyKernel
-          key: anykernel-${{ env.ANYKERNEL_BRANCH }}
-          restore-keys: |
-            anykernel-
-
       - name: Clone AnyKernel3
-        if: steps.cache-anykernel.outputs.cache-hit != 'true'
         run: |
+          # Cloned unconditionally: the cache can restore a stale tree, and a
+          # restored directory would make `git clone` fail on "already exists".
           git clone --depth=1 "$ANYKERNEL_REPO" -b "$ANYKERNEL_BRANCH" AnyKernel
 
       # ── 7. KernelSU variants ───────────────────────────────────────────────────
