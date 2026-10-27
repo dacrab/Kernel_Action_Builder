@@ -2,6 +2,38 @@
 
 This file shows how to customize the workflow for your needs.
 
+> **Note (fork `dacrab/Kernel_Action_Builder`, branch `salaa`)**
+> Sections below describing `notify_telegram`, the cache layout and the
+> "v2.0" defaults are current. Anything about `apt`/`AnyKernel3` caches or
+> the old `MESSAGE+=` message style refers to the upstream workflow.
+
+## Fork changes (salaa branch)
+
+The build workflow was trimmed relative to upstream. Current state:
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `kernel_branch` | `lineage-23.2-bakasu` | `bka-ksu` no longer exists upstream |
+| `enable_ksu` | `false` | |
+| `ksu_variant` | `BakaSU` | one data-driven setup step handles all five |
+| `enable_susfs` | `false` | ignored (with a warning) for `xxKSU` |
+| `susfs_mode` | `with_ksu` | |
+| `custom_note` | `''` | |
+| `notify_telegram` | `auto` | `auto`/`on`/`off`; see below |
+
+**Telegram notifications** run only when the repo has `TELEGRAM_BOT_TOKEN`
+and `TELEGRAM_CHAT_ID` secrets. With no secrets they are skipped (the build
+never fails because of them). `notify_telegram: off` suppresses them even
+when the secrets exist.
+
+**Caches** (only two remain):
+- `ccache-salaa-<os>-<workflow hash>` — `~/.ccache`, ~67% hit rate.
+- `clang-r547379` — the prebuilt Clang toolchain (~1.9 GB).
+
+The apt and AnyKernel3 caches were removed: apt's saved <1 MB, and a restored
+`AnyKernel/` directory made the clone step fail with
+`destination path 'AnyKernel' already exists`.
+
 ## New Workflow Inputs (v2.0)
 
 The workflow now uses improved input validation:
@@ -236,9 +268,14 @@ esac
 ## Build Optimizations
 
 ### ccache Size
-```yaml
-ccache --max-size=5G  # Increase for faster builds
+
+Configured in the **Configure ccache** step:
+
+```bash
+ccache --max-size=5G
 ```
+
+Lower it (e.g. `2G`) to shrink the ~125 MB cache entry without changing behaviour.
 
 ### Parallel Jobs
 ```yaml

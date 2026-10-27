@@ -67,7 +67,6 @@ jobs:
       ARCH: arm64
       SUBARCH: arm64
       LC_ALL: C
-      USE_CCACHE: 1
       KERNEL_REPO: "https://github.com/EvilAnsh/android_kernel_realme_salaa.git"
       CLANG_REPO: "https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git"
       ANYKERNEL_REPO: "https://github.com/kardebayan/AnyKernel3.git"
@@ -148,6 +147,8 @@ jobs:
             bc ccache libelf-dev libfdt-dev python3
 
       # ── 3. ccache ──────────────────────────────────────────────────────────────
+      # CCACHE_DIR must match the path restored below; ccache 4.x would otherwise
+      # default to ~/.cache/ccache and the cache would never be hit.
       - name: Cache ccache
         id: cache-ccache
         uses: actions/cache@v6
@@ -163,13 +164,13 @@ jobs:
           ccache --set-config=compression=true
           ccache --set-config=compression_level=1
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          ccache --show-config | grep -i cache_dir
 
       # ── 4. Kernel source ───────────────────────────────────────────────────────
       - name: Clone Kernel Source
         run: |
           git clone --depth=1 "$KERNEL_REPO" -b "${{ github.event.inputs.kernel_branch }}" kernel
           cd kernel
-          echo "KERNEL_DIR=$(pwd)"         >> $GITHUB_ENV
           echo "KERNEL_VERSION=$(make kernelversion 2>/dev/null || echo 'unknown')" >> $GITHUB_ENV
           echo "KERNEL_BRANCH=${{ github.event.inputs.kernel_branch }}" >> $GITHUB_ENV
           echo "KERNEL_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
@@ -194,124 +195,98 @@ jobs:
           # restored directory would make `git clone` fail on "already exists".
           git clone --depth=1 "$ANYKERNEL_REPO" -b "$ANYKERNEL_BRANCH" AnyKernel
 
-      # ── 7. KernelSU variants ───────────────────────────────────────────────────
-
-      # --- KernelSU-Next ---
-      # legacy-susfs -> KernelSU-Next + SUSFS (manual-hook; no CONFIG_KSU_MANUAL_HOOK needed)
-      # legacy              -> KernelSU-Next without SUSFS
-      - name: Setup KernelSU — KernelSU-Next
-        if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'KernelSU-Next'
+      # ── 7. KernelSU variant ───────────────────────────────────────────────────
+      # One step instead of five: each variant only differs in the setup script,
+      # the branch it reports, and how it handles the SUSFS flag.
+      - name: Setup KernelSU — ${{ github.event.inputs.ksu_variant }}
+        if: github.event.inputs.enable_ksu == 'true'
         working-directory: kernel
         run: |
-          if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            curl -LSs "https://gist.github.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh" | bash -s legacy
-            echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
-            echo "KSU_BRANCH=legacy-susfs-v2"     >> $GITHUB_ENV
+          set -euo pipefail
+          VARIANT="${{ github.event.inputs.ksu_variant }}"
+          WITH_SUSFS="${{ github.event.inputs.enable_susfs }}"
+          set_env() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"; }
+
+          case "$VARIANT" in
+            KernelSU-Next)
+              REPO="https://github.com/KernelSU-Next/KernelSU-Next"
+              if [ "$WITH_SUSFS" = "true" ]; then
+                # EvilAnsh's pinned ksun.sh carries the SUSFS patches.
+                setup() { curl -LSs "https://gist.githubusercontent.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh" | bash -s legacy; }
+                set_env KSU_BRANCH legacy-susfs-v2
+              else
+                setup() { curl -LSs "$REPO/next/kernel/setup.sh" | bash -s legacy; }
+                set_env KSU_BRANCH legacy
+              fi
+              ;;
+            RKSU)
+              REPO="https://github.com/rsuntk/KernelSU"
+              if [ "$WITH_SUSFS" = "true" ]; then
+                BRANCH="susfs-rksu-master"
+              else
+                BRANCH="main"
+              fi
+              setup() { curl -LSs "$REPO/main/kernel/setup.sh" | bash -s "$BRANCH"; }
+              set_env KSU_BRANCH "$BRANCH"
+              ;;
+            SukiSU)
+              REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
+              if [ "$WITH_SUSFS" = "true" ]; then BRANCH="main"; else BRANCH="builtin"; fi
+              setup() { curl -LSs "$REPO/main/kernel/setup.sh" | bash -s "$BRANCH"; }
+              set_env KSU_BRANCH "$BRANCH"
+              ;;
+            xxKSU)
+              REPO="https://github.com/backslashxx/KernelSU"
+              setup() { curl -LSs "$REPO/master/kernel/setup.sh" | bash -s master; }
+              set_env KSU_BRANCH master
+              if [ "$WITH_SUSFS" = "true" ]; then
+                echo "::warning::xxKSU does not support SUSFS — flag ignored."
+              fi
+              ;;
+            BakaSU)
+              REPO="https://github.com/Baka-SU/BakaSU"
+              setup() { curl -LSs "$REPO/main/kernel/setup.sh" | bash -s sync-susfs; }
+              set_env KSU_BRANCH main
+              ;;
+            *)
+              echo "::error::unknown ksu_variant '$VARIANT'"; exit 1 ;;
+          esac
+
+          setup
+
+          set_env KSU_VARIANT "$VARIANT"
+          set_env KSU_REPO "$REPO"
+          # xxKSU never supports SUSFS; everything else follows the input.
+          if [ "$VARIANT" = "xxKSU" ]; then
+            set_env SUSFS_ENABLED false
           else
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-            echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
-            echo "KSU_BRANCH=legacy"                  >> $GITHUB_ENV
-          fi
-          echo "KSU_VARIANT=KernelSU-Next"                                     >> $GITHUB_ENV
-          echo "KSU_REPO=https://github.com/KernelSU-Next/KernelSU-Next"          >> $GITHUB_ENV
-          
-      # --- RKSU ---
-      # susfs-rksu-master -> RKSU + SUSFS (manual-hook; no CONFIG_KSU_MANUAL_HOOK needed)
-      # main              -> RKSU without SUSFS
-      - name: Setup KernelSU — RKSU
-        if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'RKSU'
-        working-directory: kernel
-        run: |
-          if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s susfs-rksu-master
-            echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
-            echo "KSU_BRANCH=susfs-rksu-master"     >> $GITHUB_ENV
-          else
-            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
-            echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
-            echo "KSU_BRANCH=main"                  >> $GITHUB_ENV
-          fi
-          echo "KSU_VARIANT=RKSU"                                     >> $GITHUB_ENV
-          echo "KSU_REPO=https://github.com/rsuntk/KernelSU"          >> $GITHUB_ENV
-
-      # --- xxKSU ---
-      # branch: master — no SUSFS support
-      - name: Setup KernelSU — xxKSU
-        if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'xxKSU'
-        working-directory: kernel
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s master
-          echo "KSU_VARIANT=xxKSU"                                            >> $GITHUB_ENV
-          echo "SUSFS_ENABLED=false"                                           >> $GITHUB_ENV
-          echo "KSU_BRANCH=master"                                             >> $GITHUB_ENV
-          echo "KSU_REPO=https://github.com/backslashxx/KernelSU"             >> $GITHUB_ENV
-          if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            echo "::warning::xxKSU does not support SUSFS — flag ignored."
+            set_env SUSFS_ENABLED "$WITH_SUSFS"
           fi
 
-      # --- SukiSU ---
-      # susfs-main -> SukiSU + SUSFS built-in (no manual SUSFS integration needed)
-      # builtin    -> SukiSU without SUSFS
-      - name: Setup KernelSU — SukiSU
-        if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'SukiSU'
-        working-directory: kernel
+      # ── 8. SUSFS driver mode / stock fallback ─────────────────────────────────
+      - name: Configure Build Variant
         run: |
-          if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-            echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
-            echo "KSU_BRANCH=main"            >> $GITHUB_ENV
-          else
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
-            echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
-            echo "KSU_BRANCH=builtin"               >> $GITHUB_ENV
-          fi
-          echo "KSU_VARIANT=SukiSU"                                         >> $GITHUB_ENV
-          echo "KSU_REPO=https://github.com/SukiSU-Ultra/SukiSU-Ultra"     >> $GITHUB_ENV
-
-      # --- BakaSU ---
-      # branch: main — SukiSU-Ultra downstream focused on Non-GKI stability
-      - name: Setup KernelSU — BakaSU
-        if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'BakaSU'
-        working-directory: kernel
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s sync-susfs
-          echo "KSU_VARIANT=BakaSU"                                    >> $GITHUB_ENV
-          echo "KSU_BRANCH=main"                                         >> $GITHUB_ENV
-          echo "KSU_REPO=https://github.com/Baka-SU/BakaSU"          >> $GITHUB_ENV
-          if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
-          else
-            echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
+          if [ "${{ github.event.inputs.enable_ksu }}" = "false" ]; then
+            echo "KSU_VARIANT=Stock"      >> $GITHUB_ENV
+            echo "SUSFS_ENABLED=false"    >> $GITHUB_ENV
+            echo "SUSFS_DRIVER_MODE=none" >> $GITHUB_ENV
+          elif [ "${{ github.event.inputs.enable_susfs }}" = "true" ]; then
+            if [ "${{ github.event.inputs.susfs_mode }}" = "without_ksu" ]; then
+              echo "SUSFS_DRIVER_MODE=no_ksu_driver"   >> $GITHUB_ENV
+            else
+              echo "SUSFS_DRIVER_MODE=with_ksu_driver" >> $GITHUB_ENV
+            fi
           fi
 
-      # ── 8. SUSFS driver mode ───────────────────────────────────────────────────
-      - name: Configure SUSFS Driver Mode
-        if: github.event.inputs.enable_susfs == 'true'
-        run: |
-          if [ "${{ github.event.inputs.susfs_mode }}" == "without_ksu" ]; then
-            echo "SUSFS_DRIVER_MODE=no_ksu_driver"   >> $GITHUB_ENV
-          else
-            echo "SUSFS_DRIVER_MODE=with_ksu_driver" >> $GITHUB_ENV
-          fi
-
-      # ── 9. Stock fallback ──────────────────────────────────────────────────────
-      - name: Set Build Variant — Stock
-        if: github.event.inputs.enable_ksu == 'false'
-        run: |
-          echo "KSU_VARIANT=Stock"      >> $GITHUB_ENV
-          echo "SUSFS_ENABLED=false"    >> $GITHUB_ENV
-          echo "SUSFS_DRIVER_MODE=none" >> $GITHUB_ENV
-
-      # ── 10. Fetch KSU commit info ──────────────────────────────────────────────
+      # ── 9. Fetch KSU commit info ──────────────────────────────────────────────
       - name: Get KSU Commit Info
         if: github.event.inputs.enable_ksu == 'true'
         run: |
           # KSU_REPO and KSU_BRANCH are set by the variant steps above
           KSU_COMMIT=$(git ls-remote "${KSU_REPO}.git" "${KSU_BRANCH}" | cut -f1 | cut -c1-7)
-          echo "KSU_COMMIT=${KSU_COMMIT}"                        >> $GITHUB_ENV
-          echo "KSU_COMMIT_URL=${KSU_REPO}/commit/${KSU_COMMIT}" >> $GITHUB_ENV
+          echo "KSU_COMMIT=${KSU_COMMIT}" >> $GITHUB_ENV
 
-      # ── 11. Build ──────────────────────────────────────────────────────────────
+      # ── 10. Build ──────────────────────────────────────────────────────────────
       - name: Build Kernel
         id: build_kernel
         working-directory: kernel
@@ -338,7 +313,7 @@ jobs:
           echo "BUILD_DURATION=${BUILD_DURATION}" >> $GITHUB_ENV
           ccache --show-stats
 
-      # ── 12. Verify output ──────────────────────────────────────────────────────
+      # ── 11. Verify output ──────────────────────────────────────────────────────
       - name: Check Build Output
         working-directory: kernel
         run: |
@@ -349,14 +324,10 @@ jobs:
           IMAGE_SIZE_MB=$(echo "scale=2; $(stat -c%s out/arch/arm64/boot/Image.gz) / 1048576" | bc)
           echo "IMAGE_SIZE_MB=${IMAGE_SIZE_MB}" >> $GITHUB_ENV
 
-      # ── 13. Package with AnyKernel3 ───────────────────────────────────────────
+      # ── 12. Package with AnyKernel3 ───────────────────────────────────────────
       - name: Package with AnyKernel3
         run: |
-          # ── Clean ALL stale artifacts from cache ──────────────────────────────
-          # Remove both the old Image.gz and any previously built ZIPs so they
-          # never get bundled into the new package after a cache restore.
-          rm -f AnyKernel/Image.gz
-          rm -f AnyKernel/*.zip
+          rm -f AnyKernel/Image.gz AnyKernel/*.zip
 
           cp kernel/out/arch/arm64/boot/Image.gz AnyKernel/
 
@@ -385,14 +356,13 @@ jobs:
           echo "ZIP_NAME=${ZIP_NAME}"     >> $GITHUB_ENV
           echo "ANYKERNEL_DIR=$(pwd)"     >> $GITHUB_ENV
 
-      # ── 14. Upload artifact (GH backup) ───────────────────────────────────────
+      # ── 13. Upload artifact ───────────────────────────────────────
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ZIP_NAME }}
           path: ${{ env.ANYKERNEL_DIR }}/${{ env.ZIP_NAME }}.zip
           retention-days: 30
-
 
       - name: Send Kernel ZIP to Telegram
         if: (success()) && ((env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') && github.event.inputs.notify_telegram != 'off')
