@@ -31,9 +31,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # The build uploads with `archive: false`, so a download is the flashable
-      # zip itself. Older runs used a wrapper zip; nested zips are still
-      # expanded in place, so both layouts yield one asset per build.
+      # The build uploads with `archive: false`, so a download yields the exact
+      # flashable zip. Older runs produced a wrapper zip containing the package.
+      # Both layouts are accepted; either way one asset per build comes out.
       - name: Download built kernel
         if: inputs.build_run_id != ''
         uses: actions/download-artifact@v7
@@ -46,15 +46,21 @@ jobs:
         if: inputs.build_run_id != ''
         run: |
           mkdir -p assets
-          find dl -mindepth 1 -maxdepth 1 -type d -print0 | while IFS= read -r -d '' dir; do
-            while find "$dir" -name '*.zip' | grep -q .; do
-              find "$dir" -name '*.zip' -print0 | while IFS= read -r -d '' f; do
-                unzip -j -o "$f" '*.zip' -d "$(dirname "$f")" >/dev/null 2>&1 \
-                  && rm -f "$f" \
-                  || { cp "$f" "assets/$(basename "$dir").zip"; rm -f "$f"; }
-              done
+          # A package contains a flashable update-binary; a wrapper zip does not.
+          # Expand wrappers in place until only packages remain. (A *directory*
+          # can be named "*.zip" — download-artifact does that — so only test files.)
+          is_package() { unzip -l "$1" 2>/dev/null | grep -q 'META-INF/com/google/android/update-binary'; }
+          while :; do
+            found=""
+            for f in $(find dl -name '*.zip' -type f); do is_package "$f" || found="$found $f"; done
+            [ -n "$found" ] || break
+            for f in $found; do
+              unzip -j -o "$f" '*.zip' -d "$(dirname "$f")" >/dev/null && rm -f "$f"
             done
           done
+          find dl -name '*.zip' -type f -exec cp -n {} assets/ \;
+          ls -l assets/
+          test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
           # Nothing nested anywhere: also accept a bare package at the root.
           find dl -maxdepth 1 -name '*.zip' -print0 | while IFS= read -r -d '' f; do
             cp "$f" "assets/$(basename "$f")"

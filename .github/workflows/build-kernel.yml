@@ -369,15 +369,18 @@ jobs:
           zip -r9 "${ZIP_NAME}.zip" . -x '*.git*' > /dev/null 2>&1
 
           echo "ZIP_NAME=${ZIP_NAME}"     >> $GITHUB_ENV
+          echo "ZIP_BASE=${ZIP_NAME}"     >> $GITHUB_ENV
           echo "ANYKERNEL_DIR=$(pwd)"     >> $GITHUB_ENV
 
       # ── 13. Upload artifact ───────────────────────────────────────────────────
-      # archive: false uploads the flashable zip as-is, so downloading it gives
-      # the exact bytes that were built — no wrapper zip, no double compression.
+      # archive: false uploads the flashable zip as-is — no wrapper, no double
+      # compression, exact bytes. download-artifact names the extracted folder
+      # after the artifact, so the name is deliberately not "*.zip" to keep the
+      # folder from looking like a package zip.
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.ZIP_NAME }}
+          name: ${{ env.ZIP_BASE }}
           path: ${{ env.ANYKERNEL_DIR }}/${{ env.ZIP_NAME }}.zip
           archive: false
           retention-days: 30
