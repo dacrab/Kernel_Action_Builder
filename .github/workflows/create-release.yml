@@ -31,10 +31,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # GitHub serves artifacts as a wrapper zip, so the real AnyKernel3 package
-      # is one level down. Unwrap it here so the release asset is flashable.
-      # `download-artifact` unpacks the wrapper itself, so a direct package may
-      # already be present; nested zips are expanded and duplicates dropped.
+      # The build uploads with `archive: false`, so a download is the flashable
+      # zip itself. Older runs used a wrapper zip; nested zips are still
+      # expanded in place, so both layouts yield one asset per build.
       - name: Download built kernel
         if: inputs.build_run_id != ''
         uses: actions/download-artifact@v7
@@ -43,12 +42,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: dl
 
-      - name: Unwrap artifact
+      - name: Collect kernel package
         if: inputs.build_run_id != ''
         run: |
           mkdir -p assets
-          # Each package arrives in its own artifact folder. Flatten every zip in
-          # there; a nested wrapper zip is expanded in place by the same loop.
           find dl -mindepth 1 -maxdepth 1 -type d -print0 | while IFS= read -r -d '' dir; do
             while find "$dir" -name '*.zip' | grep -q .; do
               find "$dir" -name '*.zip' -print0 | while IFS= read -r -d '' f; do

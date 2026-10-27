@@ -208,6 +208,10 @@ jobs:
           VARIANT="${{ github.event.inputs.ksu_variant }}"
           WITH_SUSFS="${{ github.event.inputs.enable_susfs }}"
 
+          # Setup scripts are fetched from `/raw/`. The shorter
+          # `/OWNER/REPO/BRANCH/path` form is no longer served by github.com —
+          # it returns a 9-byte "Not Found", which `curl | bash` then tries to
+          # run as a command called `Not`.
           case "$VARIANT" in
             KernelSU-Next)
               REPO="https://github.com/KernelSU-Next/KernelSU-Next"
@@ -216,32 +220,32 @@ jobs:
                 URL="https://gist.githubusercontent.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh"
                 BRANCH="legacy-susfs-v2"
               else
-                URL="$REPO/next/kernel/setup.sh"
+                URL="$REPO/raw/legacy/kernel/setup.sh"
                 BRANCH="legacy"
               fi
               ARG="$BRANCH"
               ;;
             RKSU)
               REPO="https://github.com/rsuntk/KernelSU"
-              URL="$REPO/main/kernel/setup.sh"
+              URL="$REPO/raw/main/kernel/setup.sh"
               if [ "$WITH_SUSFS" = "true" ]; then BRANCH="susfs-rksu-master"; else BRANCH="main"; fi
               ARG="$BRANCH"
               ;;
             SukiSU)
               REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
-              URL="$REPO/main/kernel/setup.sh"
+              URL="$REPO/raw/main/kernel/setup.sh"
               if [ "$WITH_SUSFS" = "true" ]; then BRANCH="main"; else BRANCH="builtin"; fi
               ARG="$BRANCH"
               ;;
             xxKSU)
               REPO="https://github.com/backslashxx/KernelSU"
-              URL="$REPO/master/kernel/setup.sh"
+              URL="$REPO/raw/master/kernel/setup.sh"
               BRANCH="master"
               ARG="master"
               ;;
             BakaSU)
               REPO="https://github.com/Baka-SU/BakaSU"
-              URL="$REPO/main/kernel/setup.sh"
+              URL="$REPO/raw/main/kernel/setup.sh"
               BRANCH="main"
               ARG="sync-susfs"
               ;;
@@ -267,7 +271,12 @@ jobs:
       - name: Setup KernelSU — ${{ github.event.inputs.ksu_variant }}
         if: github.event.inputs.enable_ksu == 'true'
         working-directory: kernel
-        run: curl -LSs "$KSU_SETUP_URL" | bash -s "$KSU_SETUP_ARG"
+        run: |
+          curl -LSsf "$KSU_SETUP_URL" -o /tmp/ksu-setup.sh
+          # A failed fetch must never reach bash: it would execute the error text.
+          head -c2 /tmp/ksu-setup.sh | grep -qx '#!' ||
+            { echo "::error::$KSU_SETUP_URL did not return a shell script"; head -3 /tmp/ksu-setup.sh; exit 1; }
+          bash /tmp/ksu-setup.sh "$KSU_SETUP_ARG"
 
       # ── 8. SUSFS driver mode / stock fallback ─────────────────────────────────
       - name: Configure Build Variant
@@ -362,12 +371,15 @@ jobs:
           echo "ZIP_NAME=${ZIP_NAME}"     >> $GITHUB_ENV
           echo "ANYKERNEL_DIR=$(pwd)"     >> $GITHUB_ENV
 
-      # ── 13. Upload artifact ───────────────────────────────────────
+      # ── 13. Upload artifact ───────────────────────────────────────────────────
+      # archive: false uploads the flashable zip as-is, so downloading it gives
+      # the exact bytes that were built — no wrapper zip, no double compression.
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ZIP_NAME }}
           path: ${{ env.ANYKERNEL_DIR }}/${{ env.ZIP_NAME }}.zip
+          archive: false
           retention-days: 30
 
       - name: Send Kernel ZIP to Telegram
