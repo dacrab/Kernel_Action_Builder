@@ -231,14 +231,15 @@ jobs:
           fi
           name="Stormbreaker-salaa-$tag-$(date +%Y%m%d-%H%M)"
 
-          # archive: false renames the artifact after this file, so the name
-          # must avoid .zip or downloads get extracted. `zip` appends .zip
-          # itself, hence zipping to <tag>.zip and renaming afterwards.
+          # The artifact is stored with the file's extension and download-artifact
+          # extracts anything served as application/zip. .zipx is not a known
+          # extension, so downloads stay raw; ZIP_NAME restores the real name.
           repo_root=$PWD
           (cd AnyKernel && zip -qr9 "$repo_root/$tag.zip" . -x '*.git*')
-          mv "$repo_root/$tag.zip" "$repo_root/$tag"
+          mv "$repo_root/$tag.zip" "$repo_root/$tag.zipx"
           {
-            echo "ZIP_PATH=$repo_root/$tag"
+            echo "ZIP_NAME=$name.zip"
+            echo "ZIP_PATH=$repo_root/$tag.zipx"
             echo "ARTIFACT_NAME=$name-pkg"
           } >> "$GITHUB_ENV"
 
@@ -263,7 +264,7 @@ jobs:
 
           caption=$(mktemp)
           {
-            printf '✅ *Build Successful — salaa*\n────────────────────\n`%s`\n\n' "$(esc "$(basename "$ZIP_PATH")")"
+            printf '✅ *Build Successful — salaa*\n────────────────────\n`%s`\n\n' "$(esc "$ZIP_NAME")"
             printf '📱 *Device*     `Realme 7/Narzo 20 Pro/Narzo 30 4G \(salaa\)`\n'
             printf '🔩 *Kernel*     `%s`\n' "$(esc "$KERNEL_VERSION")"
             printf '🌿 *Branch*     `%s`\n' "$(esc "$BRANCH")"
@@ -300,7 +301,7 @@ jobs:
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
             -F chat_id="${TELEGRAM_CHAT_ID}" -F parse_mode=MarkdownV2 \
-            -F "caption=<${caption}" -F "document=@${ZIP_PATH}"
+            -F "caption=<${caption}" -F "document=@${ZIP_PATH};filename=${ZIP_NAME}"
 
       - name: Send Failure Notification to Telegram
         if: failure() && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' && env.NOTIFY != 'off'

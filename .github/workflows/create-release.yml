@@ -61,12 +61,14 @@ jobs:
             done
           done
           find dl -type f -name '*.zip' -exec cp -n {} assets/ \;
-          # Re-add the .zip extension: the build strips it from the artifact.
-          # Skip anything inside an already-extracted package directory.
-          in_pkg_dir() { case "$1" in */META-INF/*) return 0 ;; esac; return 1; }
+          # The build uploads the package as .zipx (so a download stays raw):
+          # restore the .zip name. Skip files inside an extracted package.
+          is_pkg_dir_file() { case "$1" in */META-INF/*) return 0 ;; esac; return 1; }
           for f in $(find dl -type f \! -name '*.zip'); do
-            in_pkg_dir "$f" && continue
-            is_package "$f" && cp -n "$f" "assets/$(basename "$f").zip"
+            is_pkg_dir_file "$f" && continue
+            is_package "$f" || continue
+            n="$(basename "$f")"; n="${n%.zipx}"
+            cp -n "$f" "assets/$n.zip"
           done
           # Older runs that were auto-extracted leave the package as a directory.
           for d in $(find dl -type d -mindepth 1); do
