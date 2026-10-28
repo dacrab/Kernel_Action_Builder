@@ -231,9 +231,8 @@ jobs:
           fi
           name="Stormbreaker-salaa-$tag-$(date +%Y%m%d-%H%M)"
 
-          # The artifact is stored with the file's extension and download-artifact
-          # extracts anything served as application/zip. .zipx is not a known
-          # extension, so downloads stay raw; ZIP_NAME restores the real name.
+          # Stored type comes from the extension: .zipx is served as a plain
+          # file, so the artifact is never re-wrapped or auto-extracted.
           repo_root=$PWD
           (cd AnyKernel && zip -qr9 "$repo_root/$tag.zip" . -x '*.git*')
           mv "$repo_root/$tag.zip" "$repo_root/$tag.zipx"
@@ -244,8 +243,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Upload Kernel Artifact
-        # archive: false keeps the flashable zip byte-identical, with no wrapper.
-        # The artifact takes the file's name, so the file is what avoids .zip.
+        # archive: false uploads the zip as-is, with no wrapper.
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
