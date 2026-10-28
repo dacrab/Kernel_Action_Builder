@@ -64,7 +64,7 @@ jobs:
           # The build uploads the package as .zipx (so a download stays raw):
           # restore the .zip name. Skip files inside an extracted package.
           is_pkg_dir_file() { case "$1" in */META-INF/*) return 0 ;; esac; return 1; }
-          for f in $(find dl -type f \! -name '*.zip'); do
+          find dl -type f \! -name '*.zip' -printf '%p\n' | while IFS= read -r f; do
             is_pkg_dir_file "$f" && continue
             is_package "$f" || continue
             n="$(basename "$f")"; n="${n%.zipx}"
@@ -79,6 +79,7 @@ jobs:
             (cd "$d" && zip -qr9 "$OLDPWD/assets/$n.zip" .)
           done
           test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
+          echo "--- downloaded ---"; find dl -maxdepth 2 | head -20
           ls -l assets/
 
       - name: Create Release
