@@ -31,9 +31,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # The build uploads with `archive: false`, so a download yields the exact
-      # flashable zip. Older runs produced a wrapper zip containing the package.
-      # Both layouts are accepted; either way one asset per build comes out.
+      # The build uploads with `archive: false`, so a download is the exact
+      # flashable zip, but named without .zip so it is not auto-extracted.
+      # Older runs produced a wrapper zip or an extracted directory.
       - name: Download built kernel
         if: inputs.build_run_id != ''
         uses: actions/download-artifact@v7
@@ -52,13 +52,28 @@ jobs:
           is_package() { unzip -l "$1" 2>/dev/null | grep -q 'META-INF/com/google/android/update-binary'; }
           while :; do
             found=""
-            for f in $(find dl -name '*.zip' -type f); do is_package "$f" || found="$found $f"; done
+            for f in $(find dl -type f \( -name '*.zip' -o -name 'Stormbreaker-salaa-*' \)); do
+              is_package "$f" || found="$found $f"
+            done
             [ -n "$found" ] || break
             for f in $found; do
               unzip -j -o "$f" '*.zip' -d "$(dirname "$f")" >/dev/null && rm -f "$f"
             done
           done
-          find dl -name '*.zip' -type f -exec cp -n {} assets/ \;
+          find dl -type f -name '*.zip' -exec cp -n {} assets/ \;
+          # Re-add the .zip extension: the build strips it from the artifact.
+          # Skip anything inside an already-extracted package directory.
+          in_pkg_dir() { case "$1" in */META-INF/*) return 0 ;; esac; return 1; }
+          for f in $(find dl -type f \! -name '*.zip'); do
+            in_pkg_dir "$f" && continue
+            is_package "$f" && cp -n "$f" "assets/$(basename "$f").zip"
+          done
+          # Older runs that were auto-extracted leave the package as a directory.
+          for d in $(find dl -type d -mindepth 1); do
+            [ -f "$d/META-INF/com/google/android/update-binary" ] || continue
+            n="$(basename "$d")"; n="${n%.zip}"
+            (cd "$d" && zip -qr9 "$OLDPWD/assets/$n.zip" .)
+          done
           test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
           ls -l assets/
 

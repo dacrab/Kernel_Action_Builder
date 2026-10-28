@@ -231,14 +231,15 @@ jobs:
           fi
           name="Stormbreaker-salaa-$tag-$(date +%Y%m%d-%H%M)"
 
-          # archive: false names the artifact after this file, and
-          # download-artifact extracts any artifact whose name ends in .zip.
-          pkg=Stormbreaker-salaa-$tag
+          # archive: false renames the artifact after this file, so the name
+          # must avoid .zip or downloads get extracted. `zip` appends .zip
+          # itself, hence zipping to <tag>.zip and renaming afterwards.
           repo_root=$PWD
-          (cd AnyKernel && zip -qr9 "$repo_root/$pkg.zip" . -x '*.git*')
+          (cd AnyKernel && zip -qr9 "$repo_root/$tag.zip" . -x '*.git*')
+          mv "$repo_root/$tag.zip" "$repo_root/$tag"
           {
-            echo "ZIP_PATH=$repo_root/$pkg.zip"
-            echo "ARTIFACT_NAME=$name.zipx"
+            echo "ZIP_PATH=$repo_root/$tag"
+            echo "ARTIFACT_NAME=$name-pkg"
           } >> "$GITHUB_ENV"
 
       - name: Upload Kernel Artifact
