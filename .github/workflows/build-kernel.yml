@@ -28,7 +28,7 @@ on:
         default: 'BakaSU'
 
       enable_susfs:
-        description: 'Enable SUSFS (KernelSU-Next / RKSU / SukiSU / BakaSU only)'
+        description: 'Enable SUSFS (ignored by xxKSU)'
         required: false
         type: boolean
         default: false
@@ -121,14 +121,14 @@ jobs:
 
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout Workflow Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
       # ── 2. Cache apt packages ─────────────────────────────────────────────────
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-apt
         with:
           path: |
@@ -149,7 +149,7 @@ jobs:
 
       # ── 3. ccache ──────────────────────────────────────────────────────────────
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.ccache
           key: ccache-salaa-${{ github.sha }}
@@ -175,7 +175,7 @@ jobs:
 
       # ── 5. Clang toolchain ─────────────────────────────────────────────────────
       - name: Cache Clang Toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-clang
         with:
           path: clang
@@ -188,7 +188,7 @@ jobs:
 
       # ── 6. AnyKernel3 ──────────────────────────────────────────────────────────
       - name: Cache AnyKernel3
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-anykernel
         with:
           path: AnyKernel
@@ -414,7 +414,7 @@ jobs:
 
       # ── 14. Upload artifact (GH backup) ───────────────────────────────────────
       - name: Upload Kernel Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ZIP_NAME }}
           path: ${{ env.ANYKERNEL_DIR }}/${{ env.ZIP_NAME }}.zip
