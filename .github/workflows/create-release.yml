@@ -59,14 +59,8 @@ jobs:
             done
           done
           find dl -name '*.zip' -type f -exec cp -n {} assets/ \;
-          ls -l assets/
           test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
-          # Nothing nested anywhere: also accept a bare package at the root.
-          find dl -maxdepth 1 -name '*.zip' -print0 | while IFS= read -r -d '' f; do
-            cp "$f" "assets/$(basename "$f")"
-          done
           ls -l assets/
-          test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
@@ -74,39 +68,19 @@ jobs:
           tag_name: ${{ inputs.tag_name }}
           name: ${{ inputs.release_name }}
           files: assets/*.zip
-          fail_on_unmatched_files: false
           body: |
             ## salaa Kernel Release
 
             **Device:** Realme 7/Narzo 20 Pro/Narzo 30 4G
 
-            ### Downloads
+            ### Installation
+            1. Download the zip for your variant (do **not** re-zip it)
+            2. Reboot to recovery (TWRP/OrangeFox)
+            3. Flash the zip, then reboot
+            4. For KernelSU variants, install the matching manager afterwards
 
-            Check the Assets section below for kernel builds.
-
-            ### Variants Available:
-            - **Stock**: No KernelSU
-            - **RKSU**: Rissu's KernelSU
-            - **RKSU-SUSFS**: RKSU with SUSFS
-            - **xxKSU**: backslashxx's KernelSU
-            - **SukiSU**: SukiSU-Ultra
-            - **SukiSU-SUSFS**: SukiSU with SUSFS
-            - **BakaSU**: BakaSU (SUSFS built-in)
-
-            ### Installation:
-            1. Download the appropriate zip (do **not** rename or re-zip it)
-            2. Reboot to recovery
-            3. Flash zip
-            4. Reboot
-            5. Install KSU Manager (for KSU variants)
-
-            ### Notes:
-            - Flash at your own risk
-            - Make sure you have a backup
-            - Use TWRP/OrangeFox recovery
-
-            ---
-            Built with ❤️ using GitHub Actions
+            Variant is in the file name: `Stock`, `<KSU>`, `<KSU>-SUSFS`, or
+            `<KSU>-SUSFS_NoDriver`. Flash at your own risk; keep a backup.
           prerelease: ${{ inputs.prerelease }}
           draft: false
 
