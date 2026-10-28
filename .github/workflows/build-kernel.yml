@@ -155,7 +155,7 @@ jobs:
               [ "$SUSFS" = true ] && { echo "::warning::xxKSU has no SUSFS, flag ignored"; SUSFS=false; } ;;
             BakaSU)
               KSU_REPO=https://github.com/Baka-SU/BakaSU
-              KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh KSU_BRANCH=sync-susfs ;;
+              KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh KSU_BRANCH=main ;;
             *) echo "::error::unknown ksu_variant '$VARIANT'"; exit 1 ;;
           esac
           {
@@ -231,16 +231,19 @@ jobs:
           fi
           name="Stormbreaker-salaa-$tag-$(date +%Y%m%d-%H%M)"
 
-          (cd AnyKernel && zip -qr9 "../$name.zip" . -x '*.git*')
+          # archive: false names the artifact after this file, and
+          # download-artifact extracts any artifact whose name ends in .zip.
+          pkg=Stormbreaker-salaa-$tag
+          repo_root=$PWD
+          (cd AnyKernel && zip -qr9 "$repo_root/$pkg.zip" . -x '*.git*')
           {
-            echo "ZIP_NAME=$name.zip"
-            echo "ZIP_PATH=$GITHUB_WORKSPACE/$name.zip"
-            # download-artifact extracts any artifact whose name ends in .zip.
-            echo "ARTIFACT_NAME=$name-pkg"
+            echo "ZIP_PATH=$repo_root/$pkg.zip"
+            echo "ARTIFACT_NAME=$name.zipx"
           } >> "$GITHUB_ENV"
 
       - name: Upload Kernel Artifact
         # archive: false keeps the flashable zip byte-identical, with no wrapper.
+        # The artifact takes the file's name, so the file is what avoids .zip.
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
@@ -259,7 +262,7 @@ jobs:
 
           caption=$(mktemp)
           {
-            printf '✅ *Build Successful — salaa*\n────────────────────\n`%s`\n\n' "$(esc "$ZIP_NAME")"
+            printf '✅ *Build Successful — salaa*\n────────────────────\n`%s`\n\n' "$(esc "$(basename "$ZIP_PATH")")"
             printf '📱 *Device*     `Realme 7/Narzo 20 Pro/Narzo 30 4G \(salaa\)`\n'
             printf '🔩 *Kernel*     `%s`\n' "$(esc "$KERNEL_VERSION")"
             printf '🌿 *Branch*     `%s`\n' "$(esc "$BRANCH")"
