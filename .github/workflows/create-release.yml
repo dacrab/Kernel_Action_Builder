@@ -70,13 +70,15 @@ jobs:
             n="$(basename "$f")"; n="${n%.zipx}"
             cp -n "$f" "assets/$n.zip"
           done
-          # A downloaded artifact that was auto-extracted shows up as one
-          # top-level directory: flash it back together as <name>.zip.
-          for d in dl/*/; do
-            d="${d%/}"
-            find "$d" -path '*/META-INF/com/google/android/update-binary' -print -quit | grep -q . || continue
-            n="$(basename "$d")"; n="${n%.zipx}"; n="${n%.zip}"
-            (cd "$d" && zip -qr9 "$OLDPWD/assets/$n.zip" .)
+          # download-artifact extracts straight into dl/ (or a directory named
+          # after the artifact). Rebuild the package from whichever it used:
+          # take every root whose META-INF sits at a fixed distance from it.
+          for base in dl dl/*/; do
+            base="${base%/}"
+            [ -f "$base/META-INF/com/google/android/update-binary" ] || continue
+            n="$(basename "$base")"
+            case "$n" in dl) n=kernel ;; *) n="${n%.zipx}"; n="${n%.zip}"; n="${n%.kernel}" ;; esac
+            (cd "$base" && zip -qr9 "$OLDPWD/assets/$n.zip" .)
           done
           test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
           echo "--- downloaded ---"; find dl -maxdepth 2 | head -20
