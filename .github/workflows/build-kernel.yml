@@ -203,6 +203,26 @@ jobs:
 
       # ── 7. KernelSU variants ───────────────────────────────────────────────────
 
+      # Fetch a KernelSU setup script and run it. Piping curl into bash executes
+      # the error body when the fetch fails, so download and verify first.
+      - name: Install KernelSU setup helper
+        if: github.event.inputs.enable_ksu == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cat > "$RUNNER_TEMP/bin/ksu-setup" <<'EOF'
+          #!/bin/bash
+          # usage: ksu-setup <url> [arg]
+          set -e
+          script=$(mktemp)
+          trap 'rm -f "$script"' EXIT
+          curl -fsSL "$1" -o "$script"
+          head -c2 "$script" | grep -qx '#!' ||
+            { echo "::error::$1 did not return a shell script"; head -3 "$script"; exit 1; }
+          bash "$script" "${2:-}"
+          EOF
+          chmod +x "$RUNNER_TEMP/bin/ksu-setup"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
       # --- KernelSU-Next ---
       # legacy-susfs -> KernelSU-Next + SUSFS (manual-hook; no CONFIG_KSU_MANUAL_HOOK needed)
       # legacy              -> KernelSU-Next without SUSFS
@@ -211,11 +231,11 @@ jobs:
         working-directory: kernel
         run: |
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            curl -LSs "https://gist.github.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh" | bash -s legacy
+            ksu-setup "https://gist.github.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh" legacy
             echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
             echo "KSU_BRANCH=legacy-susfs-v2"     >> $GITHUB_ENV
           else
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
+            ksu-setup "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" legacy
             echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
             echo "KSU_BRANCH=legacy"                  >> $GITHUB_ENV
           fi
@@ -230,11 +250,11 @@ jobs:
         working-directory: kernel
         run: |
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s susfs-rksu-master
+            ksu-setup "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" susfs-rksu-master
             echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
             echo "KSU_BRANCH=susfs-rksu-master"     >> $GITHUB_ENV
           else
-            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
+            ksu-setup "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" main
             echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
             echo "KSU_BRANCH=main"                  >> $GITHUB_ENV
           fi
@@ -247,7 +267,7 @@ jobs:
         if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'xxKSU'
         working-directory: kernel
         run: |
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s master
+          ksu-setup "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" master
           echo "KSU_VARIANT=xxKSU"                                            >> $GITHUB_ENV
           echo "SUSFS_ENABLED=false"                                           >> $GITHUB_ENV
           echo "KSU_BRANCH=master"                                             >> $GITHUB_ENV
@@ -264,11 +284,11 @@ jobs:
         working-directory: kernel
         run: |
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+            ksu-setup "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" main
             echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
             echo "KSU_BRANCH=main"            >> $GITHUB_ENV
           else
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+            ksu-setup "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" builtin
             echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
             echo "KSU_BRANCH=builtin"               >> $GITHUB_ENV
           fi
@@ -281,7 +301,7 @@ jobs:
         if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'BakaSU'
         working-directory: kernel
         run: |
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s main
+          ksu-setup "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" main
           echo "KSU_VARIANT=BakaSU"                                    >> $GITHUB_ENV
           echo "KSU_BRANCH=main"                                         >> $GITHUB_ENV
           echo "KSU_REPO=https://github.com/Baka-SU/BakaSU"          >> $GITHUB_ENV
