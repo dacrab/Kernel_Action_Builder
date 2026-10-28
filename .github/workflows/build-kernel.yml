@@ -67,6 +67,8 @@ jobs:
     steps:
       # ── 0. Notify Telegram: Build Started ────────────────────────────────────
       - name: Notify Telegram — Build Started
+        if: env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        continue-on-error: true
         run: |
           VARIANT="${{ github.event.inputs.ksu_variant }}"
           if [ "${{ github.event.inputs.enable_ksu }}" != "true" ]; then
@@ -402,7 +404,8 @@ jobs:
       # sendDocument uses multipart/form-data. Caption uses MarkdownV2 via a
       # temp file piped with -F "caption=<file". All special chars are escaped.
       - name: Send Kernel ZIP to Telegram
-        if: success()
+        if: success() && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        continue-on-error: true
         run: |
           ZIP_PATH="${ANYKERNEL_DIR}/${ZIP_NAME}.zip"
           duration_min=$(( BUILD_DURATION / 60 ))
@@ -496,7 +499,8 @@ jobs:
 
       # ── 16. Failure notification ──────────────────────────────────────────────
       - name: Send Failure Notification to Telegram
-        if: failure()
+        if: failure() && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        continue-on-error: true
         run: |
           esc() { printf '%s' "$1" | sed 's/[_*[\]()~`>#+=|{}.!-]/\\&/g'; }
 
