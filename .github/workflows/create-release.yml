@@ -70,10 +70,12 @@ jobs:
             n="$(basename "$f")"; n="${n%.zipx}"
             cp -n "$f" "assets/$n.zip"
           done
-          # Older runs that were auto-extracted leave the package as a directory.
-          for d in $(find dl -type d -mindepth 1); do
-            [ -f "$d/META-INF/com/google/android/update-binary" ] || continue
-            n="$(basename "$d")"; n="${n%.zip}"
+          # A downloaded artifact that was auto-extracted shows up as one
+          # top-level directory: flash it back together as <name>.zip.
+          for d in dl/*/; do
+            d="${d%/}"
+            find "$d" -path '*/META-INF/com/google/android/update-binary' -print -quit | grep -q . || continue
+            n="$(basename "$d")"; n="${n%.zipx}"; n="${n%.zip}"
             (cd "$d" && zip -qr9 "$OLDPWD/assets/$n.zip" .)
           done
           test -n "$(ls -A assets)" || { echo "::error::no kernel package found in run"; exit 1; }
