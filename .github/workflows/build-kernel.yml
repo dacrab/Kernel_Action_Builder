@@ -215,7 +215,7 @@ jobs:
             echo "SUSFS_ENABLED=true"               >> $GITHUB_ENV
             echo "KSU_BRANCH=legacy-susfs-v2"     >> $GITHUB_ENV
           else
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
             echo "SUSFS_ENABLED=false"              >> $GITHUB_ENV
             echo "KSU_BRANCH=legacy"                  >> $GITHUB_ENV
           fi
@@ -281,7 +281,7 @@ jobs:
         if: github.event.inputs.enable_ksu == 'true' && github.event.inputs.ksu_variant == 'BakaSU'
         working-directory: kernel
         run: |
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s sync-susfs
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s main
           echo "KSU_VARIANT=BakaSU"                                    >> $GITHUB_ENV
           echo "KSU_BRANCH=main"                                         >> $GITHUB_ENV
           echo "KSU_REPO=https://github.com/Baka-SU/BakaSU"          >> $GITHUB_ENV
