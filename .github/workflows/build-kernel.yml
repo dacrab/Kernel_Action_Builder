@@ -94,10 +94,10 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.ccache
-          # Static key: a hash of this file would create a new cache on every
-          # workflow edit. ccache double-checks compiler output itself.
-          key: ccache-salaa-${{ inputs.kernel_branch }}-${{ github.run_id }}
-          restore-keys: ccache-salaa-${{ inputs.kernel_branch }}-
+          # A changing key would store a new cache every run. The branch keeps
+          # builds apart; ccache validates each object against its inputs.
+          key: ccache-salaa-${{ inputs.kernel_branch }}
+          restore-keys: ccache-salaa-
 
       - name: Configure ccache
         run: |
