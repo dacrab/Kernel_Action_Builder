@@ -70,7 +70,8 @@ jobs:
         run: |
           esc() { printf '%s' "$1" | sed 's/[_*[\]()~`>#+=|{}.!-]/\\&/g'; }
           label="$VARIANT"; [ "$KSU" = true ] || label=Stock
-          [ "$SUSFS" = true ] && label="$label + SUSFS"
+          # KernelSU-Next and xxKSU ignore the SUSFS flag; do not claim it.
+          [ "$SUSFS" = true ] && [ "$VARIANT" != KernelSU-Next ] && [ "$VARIANT" != xxKSU ] && label="$label + SUSFS"
 
           msg=$(mktemp)
           {
@@ -133,33 +134,31 @@ jobs:
         run: |
           case "$VARIANT" in
             KernelSU-Next)
+              # This variant does not define the ksu_*_susfs symbols that the
+              # defconfig's CONFIG_KSU_SUSFS needs, so it cannot be built with
+              # SUSFS at all.
               KSU_REPO=https://github.com/KernelSU-Next/KernelSU-Next
-              KSU_SETUP_URL=$KSU_REPO/raw/legacy/kernel/setup.sh KSU_BRANCH=legacy
-              # There is no SUSFS branch of KernelSU-Next to build: the old
-              # ksun.sh gist clones hestudio-community/KernelSU-Next and checks
-              # out legacy-susfs-v2, which is not a branch there. That fell
-              # through to its default branch, so this silently built a plain
-              # legacy kernel while reporting SUSFS.
-              [ "$SUSFS" = true ] && { echo "::warning::KernelSU-Next has no SUSFS build, flag ignored"; SUSFS=false; } ;;
+              KSU_SETUP_URL=$KSU_REPO/raw/legacy/kernel/setup.sh KSU_BRANCH=legacy ;;
             RKSU)
               KSU_REPO=https://github.com/rsuntk/KernelSU
               KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh
               [ "$SUSFS" = true ] && KSU_BRANCH=susfs-rksu-master || KSU_BRANCH=main
               # Frozen since 2025-12-20 while upstream moved on; still builds.
-              [ "$SUSFS" = true ] && echo "::warning::RKSU's susfs-rksu-master branch has not been updated since 2025-12-20" ;;
+              [ "$SUSFS" = true ] && echo "::warning::RKSU susfs-rksu-master has not been updated since 2025-12-20" ;;
             SukiSU)
               KSU_REPO=https://github.com/SukiSU-Ultra/SukiSU-Ultra
               KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh
               [ "$SUSFS" = true ] && KSU_BRANCH=main || KSU_BRANCH=builtin ;;
             xxKSU)
               KSU_REPO=https://github.com/backslashxx/KernelSU
-              KSU_SETUP_URL=$KSU_REPO/raw/master/kernel/setup.sh KSU_BRANCH=master
-              [ "$SUSFS" = true ] && { echo "::warning::xxKSU has no SUSFS, flag ignored"; SUSFS=false; } ;;
+              KSU_SETUP_URL=$KSU_REPO/raw/master/kernel/setup.sh KSU_BRANCH=master ;;
             BakaSU)
               KSU_REPO=https://github.com/Baka-SU/BakaSU
               KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh KSU_BRANCH=main ;;
             *) echo "::error::unknown ksu_variant '$VARIANT'"; exit 1 ;;
           esac
+          # Job-level env beats GITHUB_ENV, so the resolved value is published
+          # as SUSFS_ENABLED and every later step reads that instead of SUSFS.
           {
             echo "KSU_VARIANT=$VARIANT"
             echo "KSU_REPO=$KSU_REPO"
@@ -188,7 +187,7 @@ jobs:
               echo "SUSFS_ENABLED=false"
               echo "SUSFS_DRIVER_MODE=none"
             } >> "$GITHUB_ENV"
-          elif [ "$SUSFS" = true ]; then
+          elif [ "$SUSFS_ENABLED" = true ]; then
             [ "$SUSFS_MODE" = without_ksu ] && mode=no_ksu_driver || mode=with_ksu_driver
             echo "SUSFS_DRIVER_MODE=$mode" >> "$GITHUB_ENV"
           fi
