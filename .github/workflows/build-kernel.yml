@@ -157,6 +157,15 @@ jobs:
               KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh KSU_BRANCH=main ;;
             *) echo "::error::unknown ksu_variant '$VARIANT'"; exit 1 ;;
           esac
+          # These variants have no SUSFS build; ignore the flag instead of
+          # failing the link step minutes later.
+          if [ "$SUSFS" = true ]; then
+            case "$VARIANT" in
+              KernelSU-Next|xxKSU)
+                echo "::warning::$VARIANT has no SUSFS support, flag ignored"
+                SUSFS=false ;;
+            esac
+          fi
           # Job-level env beats GITHUB_ENV, so the resolved value is published
           # as SUSFS_ENABLED and every later step reads that instead of SUSFS.
           {
