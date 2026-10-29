@@ -17,7 +17,7 @@ on:
         options: [KernelSU-Next, RKSU, xxKSU, SukiSU, BakaSU]
         default: 'BakaSU'
       enable_susfs:
-        description: 'Enable SUSFS (not supported by xxKSU). Mode picks the driver; without KSU only the patch is applied, no KSU driver.'
+        description: 'Enable SUSFS (not supported by xxKSU or KernelSU-Next). Mode picks the driver; without KSU only the patch is applied, no KSU driver.'
         type: boolean
         default: false
       susfs_mode:
@@ -134,17 +134,19 @@ jobs:
           case "$VARIANT" in
             KernelSU-Next)
               KSU_REPO=https://github.com/KernelSU-Next/KernelSU-Next
-              if [ "$SUSFS" = true ]; then
-                # EvilAnsh's pinned ksun.sh carries the SUSFS patches.
-                KSU_SETUP_URL=https://gist.githubusercontent.com/EvilAnsh/a57e99f5d8a8e7d22a59874d99752893/raw/443ecfa83c06821a26c58ca943cec9eda9c95264/ksun.sh
-                KSU_BRANCH=legacy-susfs-v2
-              else
-                KSU_SETUP_URL=$KSU_REPO/raw/legacy/kernel/setup.sh KSU_BRANCH=legacy
-              fi ;;
+              KSU_SETUP_URL=$KSU_REPO/raw/legacy/kernel/setup.sh KSU_BRANCH=legacy
+              # There is no SUSFS branch of KernelSU-Next to build: the old
+              # ksun.sh gist clones hestudio-community/KernelSU-Next and checks
+              # out legacy-susfs-v2, which is not a branch there. That fell
+              # through to its default branch, so this silently built a plain
+              # legacy kernel while reporting SUSFS.
+              [ "$SUSFS" = true ] && { echo "::warning::KernelSU-Next has no SUSFS build, flag ignored"; SUSFS=false; } ;;
             RKSU)
               KSU_REPO=https://github.com/rsuntk/KernelSU
               KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh
-              [ "$SUSFS" = true ] && KSU_BRANCH=susfs-rksu-master || KSU_BRANCH=main ;;
+              [ "$SUSFS" = true ] && KSU_BRANCH=susfs-rksu-master || KSU_BRANCH=main
+              # Frozen since 2025-12-20 while upstream moved on; still builds.
+              [ "$SUSFS" = true ] && echo "::warning::RKSU's susfs-rksu-master branch has not been updated since 2025-12-20" ;;
             SukiSU)
               KSU_REPO=https://github.com/SukiSU-Ultra/SukiSU-Ultra
               KSU_SETUP_URL=$KSU_REPO/raw/main/kernel/setup.sh
@@ -193,7 +195,13 @@ jobs:
 
       - name: Get KSU Commit Info
         if: inputs.enable_ksu
-        run: echo "KSU_COMMIT=$(git ls-remote "${KSU_REPO}.git" "$KSU_BRANCH" | cut -f1 | cut -c1-7)" >> "$GITHUB_ENV"
+        run: |
+          # An empty result means KSU_BRANCH is not a ref in KSU_REPO, so the
+          # setup script silently checked out the default branch instead.
+          KSU_COMMIT=$(git ls-remote "${KSU_REPO}.git" "$KSU_BRANCH" | cut -f1 | cut -c1-7)
+          [ -n "$KSU_COMMIT" ] ||
+            { echo "::error::$KSU_BRANCH is not a ref in $KSU_REPO"; exit 1; }
+          echo "KSU_COMMIT=$KSU_COMMIT" >> "$GITHUB_ENV"
 
       - name: Build Kernel
         working-directory: kernel
